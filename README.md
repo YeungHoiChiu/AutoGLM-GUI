@@ -22,6 +22,37 @@ AutoGLM 手机助手的现代化 Web 图形界面 - 让 AI 自动化操作 Andro
 
 ## 🚀 快速开始
 
+## 🎯 模型服务配置
+
+AutoGLM-GUI 只需要一个 OpenAI 兼容的模型服务。你可以：
+
+- 使用官方已托管的第三方服务
+  - 智谱 BigModel：`--base-url https://open.bigmodel.cn/api/paas/v4`，`--model autoglm-phone`，`--apikey <你的 API Key>`
+  - ModelScope：`--base-url https://api-inference.modelscope.cn/v1`，`--model ZhipuAI/AutoGLM-Phone-9B`，`--apikey <你的 API Key>`
+- 或自建服务：参考上游项目的部署文档(`/Users/suyiiyii/Documents/git/Open-AutoGLM/README.md` 或仓库 README) 用 vLLM/SGLang 部署 `zai-org/AutoGLM-Phone-9B`，启动 OpenAI 兼容端口后将 `--base-url` 指向你的服务。
+
+示例：
+
+```bash
+# 使用智谱 BigModel
+pip install autoglm-gui
+autoglm-gui \
+  --base-url https://open.bigmodel.cn/api/paas/v4 \
+  --model autoglm-phone \
+  --apikey sk-xxxxx
+
+# 使用 ModelScope
+pip install autoglm-gui
+autoglm-gui \
+  --base-url https://api-inference.modelscope.cn/v1 \
+  --model ZhipuAI/AutoGLM-Phone-9B \
+  --apikey sk-xxxxx
+
+# 指向你自建的 vLLM/SGLang 服务
+pip install autoglm-gui
+autoglm-gui --base-url http://localhost:8000/v1 --model autoglm-phone-9b
+```
+
 ### 前置要求
 
 - Python 3.10+
@@ -31,24 +62,24 @@ AutoGLM 手机助手的现代化 Web 图形界面 - 让 AI 自动化操作 Andro
 
 ### 快捷运行（推荐）
 
-**无需安装，直接运行：**
+**无需手动准备环境，直接安装运行：**
 
 ```bash
-# 使用 uvx 一键启动（无需提前安装包）
+# 通过 pip 安装并启动
+pip install autoglm-gui
+autoglm-gui --base-url http://localhost:8080/v1
+```
+
+也可以使用 uvx 免安装启动（需已安装 uv，[安装教程](https://docs.astral.sh/uv/getting-started/installation/)）：
+
+```bash
 uvx autoglm-gui --base-url http://localhost:8080/v1
 ```
 
-需要提前安装 uv，[安装教程](https://docs.astral.sh/uv/getting-started/installation/)。
-
 ### 传统安装
 
-
 ```bash
-# 方式 1: 通过 pip 安装
-pip install autoglm-gui
-autoglm-gui --base-url http://localhost:8080/v1
-
-# 方式 2: 从源码安装
+# 从源码安装
 git clone https://github.com/your-repo/AutoGLM-GUI.git
 cd AutoGLM-GUI
 uv sync
