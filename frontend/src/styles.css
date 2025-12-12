@@ -61,3 +61,15 @@ body {
 .animate-fade-in {
   animation: fade-in 200ms ease-out;
 }
+
+/* Scroll fade animation for wheel events */
+@keyframes scrollFade {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.8);
+  }
+}

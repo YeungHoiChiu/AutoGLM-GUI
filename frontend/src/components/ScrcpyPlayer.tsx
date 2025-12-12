@@ -3,6 +3,7 @@ import React from 'react';
 import jMuxer from 'jmuxer';
 import { sendTap, sendSwipe, getScreenshot } from '../api';
 const MIN_SWIPE_DISTANCE = 3; // Minimum distance in pixels to qualify as a swipe
+const WHEEL_DELAY_MS = 400; // Debounce delay for wheel events
 interface ScrcpyPlayerProps {
   className?: string;
   onFallback?: () => void; // Callback when fallback to screenshot is needed
@@ -53,6 +54,13 @@ export function ScrcpyPlayer({
     startY: number;
     endX: number;
     endY: number;
+  } | null>(null);
+
+  // Wheel debounce state
+  const wheelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const accumulatedScrollRef = useRef<{
+    deltaY: number;
+    lastTime: number;
   } | null>(null);
 
   // Device actual resolution (not video stream resolution)
@@ -221,6 +229,136 @@ export function ScrcpyPlayer({
     // It's a swipe
     await executeSwipe(dragStartRef.current, dragEnd);
     dragStartRef.current = null;
+  };
+
+  /**
+   * Handle wheel event for vertical scrolling with debouncing
+   */
+  const handleWheel = async (event: React.WheelEvent<HTMLVideoElement>) => {
+    if (!enableControl || !videoRef.current || status !== 'connected') return;
+
+    // Prevent default scroll behavior
+    // event.preventDefault();
+
+    const now = Date.now();
+    const currentDelta = event.deltaY;
+
+    // Initialize or accumulate scroll data
+    if (!accumulatedScrollRef.current) {
+      accumulatedScrollRef.current = {
+        deltaY: 0,
+        lastTime: now,
+      };
+    }
+
+    // Accumulate scroll delta
+    accumulatedScrollRef.current.deltaY += currentDelta;
+    accumulatedScrollRef.current.lastTime = now;
+
+    // Clear existing timeout
+    if (wheelTimeoutRef.current) {
+      clearTimeout(wheelTimeoutRef.current);
+    }
+
+    // Set new timeout to execute scroll after 150ms of inactivity
+    wheelTimeoutRef.current = setTimeout(async () => {
+      if (!accumulatedScrollRef.current || !videoRef.current) return;
+
+      const totalDelta = accumulatedScrollRef.current;
+      accumulatedScrollRef.current = null; // Reset accumulation
+
+      // Get mouse position for scroll center
+      const rect = videoRef.current.getBoundingClientRect();
+      const mouseX = event.clientX;
+      const mouseY = event.clientY;
+
+      // Calculate scroll distance from accumulated delta
+      const scrollDistance = Math.abs(totalDelta.deltaY);
+      const swipeDuration = Math.min(Math.max(300, scrollDistance), 800); // Duration based on distance
+
+      // Convert mouse position to device coordinates
+      const mouseDeviceCoords = getDeviceCoordinates(
+        mouseX - rect.left,
+        mouseY - rect.top,
+        videoRef.current
+      );
+
+      if (!mouseDeviceCoords || !deviceResolution) {
+        console.warn(
+          '[ScrcpyPlayer] Cannot execute scroll: coordinate transformation failed'
+        );
+        return;
+      }
+
+      // Scale from video stream resolution to device actual resolution
+      const videoWidth = videoRef.current.videoWidth;
+      const videoHeight = videoRef.current.videoHeight;
+      const scaleX = deviceResolution.width / videoWidth;
+      const scaleY = deviceResolution.height / videoHeight;
+
+      const actualCenterX = Math.round(mouseDeviceCoords.x * scaleX);
+      const actualCenterY = Math.round(mouseDeviceCoords.y * scaleY);
+
+      // Calculate swipe start and end points (vertical swipe)
+      let startY, endY;
+      if (totalDelta.deltaY > 0) {
+        // Scroll down - swipe from top to bottom
+        startY = actualCenterY - scrollDistance / 2;
+        endY = actualCenterY + scrollDistance / 2;
+      } else {
+        // Scroll up - swipe from bottom to top
+        startY = actualCenterY + scrollDistance / 2;
+        endY = actualCenterY - scrollDistance / 2;
+      }
+
+      // Show scroll indicator at mouse position
+      const scrollIndicator = document.createElement('div');
+      scrollIndicator.style.cssText = `
+        position: fixed;
+        left: ${mouseX}px;
+        top: ${
+          totalDelta.deltaY > 0
+            ? mouseY - scrollDistance / 4
+            : mouseY + scrollDistance / 4
+        }px;
+        width: 2px;
+        height: ${scrollDistance / 2}px;
+        background: linear-gradient(${totalDelta.deltaY > 0 ? 'to bottom' : 'to top'},
+          rgba(59, 130, 246, 0.8), rgba(59, 130, 246, 0.2));
+        pointer-events: none;
+        z-index: 50;
+        transform: translateX(-50%);
+        animation: scrollFade 0.5s ease-out;
+      `;
+      document.body.appendChild(scrollIndicator);
+
+      // Remove scroll indicator after animation
+      setTimeout(() => {
+        if (scrollIndicator.parentNode) {
+          scrollIndicator.parentNode.removeChild(scrollIndicator);
+        }
+      }, 500);
+
+      try {
+        const result = await sendSwipe(
+          actualCenterX,
+          startY,
+          actualCenterX,
+          endY,
+          swipeDuration
+        );
+
+        if (result.success) {
+          onSwipeSuccess?.();
+        } else {
+          onSwipeError?.(result.error || 'Scroll failed');
+        }
+      } catch (error) {
+        onSwipeError?.(String(error));
+      }
+    }, WHEEL_DELAY_MS);
+
+    return;
   };
 
   /**
@@ -676,6 +814,7 @@ export function ScrcpyPlayer({
             setSwipeLine(null);
           }
         }}
+        onWheel={handleWheel}
         className={`max-w-full max-h-full object-contain ${
           enableControl ? 'cursor-pointer' : ''
         }`}
