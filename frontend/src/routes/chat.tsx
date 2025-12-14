@@ -53,7 +53,7 @@ function ChatComponent() {
   }, [currentDeviceId]);
 
   return (
-    <div className="h-full flex relative">
+    <div className="h-full flex relative min-h-0">
       {/* Config Modal */}
       {showConfig && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
@@ -132,7 +132,7 @@ function ChatComponent() {
       />
 
       {/* 右侧主内容区 - 多实例架构 */}
-      <div className="flex-1 relative flex items-center justify-center">
+      <div className="flex-1 relative flex items-stretch justify-center min-h-0">
         {devices.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
             <div className="text-center text-gray-500 dark:text-gray-400">
@@ -159,7 +159,7 @@ function ChatComponent() {
           devices.map(device => (
             <div
               key={device.id}
-              className={`w-full h-full flex items-center justify-center ${
+              className={`w-full h-full flex items-stretch justify-center min-h-0 ${
                 device.id === currentDeviceId ? '' : 'hidden'
               }`}
             >

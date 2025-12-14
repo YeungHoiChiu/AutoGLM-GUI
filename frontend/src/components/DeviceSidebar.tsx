@@ -75,7 +75,7 @@ export function DeviceSidebar({
 
       {/* 侧边栏主体 */}
       <div
-        className={`${isCollapsed ? 'w-0 -ml-8' : 'w-64'} transition-all duration-500 ease-[cubic-bezier(0.4,0.0,0.2,1)] h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden`}
+        className={`${isCollapsed ? 'w-0 -ml-8' : 'w-64'} transition-all duration-500 ease-[cubic-bezier(0.4,0.0,0.2,1)] h-full min-h-0 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden`}
       >
         {/* 头部 */}
         <div className="border-b border-gray-200 dark:border-gray-700 flex items-center justify-between p-4 whitespace-nowrap">
@@ -123,7 +123,7 @@ export function DeviceSidebar({
         </div>
 
         {/* 设备列表 */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
           {devices.length === 0 ? (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <svg
