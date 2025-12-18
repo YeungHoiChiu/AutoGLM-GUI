@@ -4,7 +4,10 @@ AutoGLM 手机助手的现代化 Web 图形界面 - 让 AI 自动化操作 Andro
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
-
+<br/>
+  <a href="https://qm.qq.com/q/J5eAs9tn0W" target="__blank">
+    <strong>欢迎加入讨论交流群</strong>
+  </a>
 ## ✨ 特性
 
 - **多设备并发控制** - 同时管理和控制多个 Android 设备，设备间状态完全隔离
