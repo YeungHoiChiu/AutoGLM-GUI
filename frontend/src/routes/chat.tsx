@@ -13,13 +13,31 @@ import {
 import { DeviceSidebar } from '../components/DeviceSidebar';
 import { DevicePanel } from '../components/DevicePanel';
 import { Toast, type ToastType } from '../components/Toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import {
+  Settings,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  X,
+} from 'lucide-react';
 
 export const Route = createFileRoute('/chat')({
   component: ChatComponent,
 });
 
 function ChatComponent() {
-  // 设备列表和当前选中设备
   const [devices, setDevices] = useState<Device[]>([]);
   const [currentDeviceId, setCurrentDeviceId] = useState<string>('');
   const [toast, setToast] = useState<{
@@ -32,7 +50,6 @@ function ChatComponent() {
     setToast({ message, type, visible: true });
   };
 
-  // 全局配置（所有设备共享）
   const [config, setConfig] = useState<ConfigSaveRequest | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -42,7 +59,6 @@ function ChatComponent() {
     api_key: '',
   });
 
-  // 加载配置
   useEffect(() => {
     const loadConfiguration = async () => {
       try {
@@ -58,44 +74,37 @@ function ChatComponent() {
           api_key: data.api_key || '',
         });
 
-        // 如果 base_url 为空，自动打开配置模态框
         if (!data.base_url) {
           setShowConfig(true);
         }
       } catch (err) {
         console.error('Failed to load config:', err);
-        setShowConfig(true); // 加载失败时也打开配置
+        setShowConfig(true);
       }
     };
 
     loadConfiguration();
   }, []);
 
-  // 加载设备列表
   useEffect(() => {
     const loadDevices = async () => {
       try {
         const response = await listDevices();
 
-        // 过滤重复设备：如果同一个序列号有 USB 和 WiFi 连接，优先保留 WiFi
         const deviceMap = new Map<string, Device>();
-        const serialMap = new Map<string, Device[]>(); // 按序列号分组
+        const serialMap = new Map<string, Device[]>();
 
-        // 第一步：按序列号分组设备
         for (const device of response.devices) {
           if (device.serial) {
             const group = serialMap.get(device.serial) || [];
             group.push(device);
             serialMap.set(device.serial, group);
           } else {
-            // 没有序列号的设备直接加入结果
             deviceMap.set(device.id, device);
           }
         }
 
-        // 第二步：对于同一序列号的设备，优先选择 WiFi 连接
-        Array.from(serialMap.values()).forEach(devices => {
-          // 优先选择 remote 类型的设备
+        Array.from(serialMap.values()).forEach((devices) => {
           const remoteDevice = devices.find(
             (d: Device) => d.connection_type === 'remote'
           );
@@ -106,15 +115,13 @@ function ChatComponent() {
         const filteredDevices = Array.from(deviceMap.values());
         setDevices(filteredDevices);
 
-        // 自动选择第一个设备（如果当前没有选中设备）
         if (filteredDevices.length > 0 && !currentDeviceId) {
           setCurrentDeviceId(filteredDevices[0].id);
         }
 
-        // ✅ 新增：处理当前设备被移除的情况
         if (
           currentDeviceId &&
-          !filteredDevices.find(d => d.id === currentDeviceId)
+          !filteredDevices.find((d) => d.id === currentDeviceId)
         ) {
           setCurrentDeviceId(filteredDevices[0]?.id || '');
         }
@@ -124,39 +131,35 @@ function ChatComponent() {
     };
 
     loadDevices();
-    // 每3秒刷新设备列表
     const interval = setInterval(loadDevices, 3000);
     return () => clearInterval(interval);
   }, [currentDeviceId]);
 
   const handleSaveConfig = async () => {
-    try {
-      // 验证 base_url
-      if (!tempConfig.base_url) {
-        alert('Base URL 是必需的');
-        return;
-      }
+    if (!tempConfig.base_url) {
+      showToast('Base URL is required', 'error');
+      return;
+    }
 
-      // 保存到后端
+    try {
       await saveConfig({
         base_url: tempConfig.base_url,
         model_name: tempConfig.model_name || 'autoglm-phone-9b',
         api_key: tempConfig.api_key || undefined,
       });
 
-      // 更新本地状态
       setConfig({
         base_url: tempConfig.base_url,
         model_name: tempConfig.model_name,
         api_key: tempConfig.api_key || undefined,
       });
       setShowConfig(false);
-
-      console.log('Configuration saved successfully');
+      showToast('Configuration saved', 'success');
     } catch (err) {
       console.error('Failed to save config:', err);
-      alert(
-        `保存配置失败: ${err instanceof Error ? err.message : 'Unknown error'}`
+      showToast(
+        `Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        'error'
       );
     }
   };
@@ -165,16 +168,13 @@ function ChatComponent() {
     try {
       const res = await connectWifi({ device_id: deviceId });
       if (res.success && res.device_id) {
-        // 刷新列表后切换到新的 WiFi 设备 ID
         setCurrentDeviceId(res.device_id);
-        showToast('WiFi 连接成功！', 'success');
-        // 注意：不需要手动刷新，useEffect 会自动刷新并过滤
+        showToast('WiFi connected', 'success');
       } else if (!res.success) {
-        showToast(res.message || res.error || '连接失败', 'error');
-        console.error('Connect WiFi failed:', res.message || res.error);
+        showToast(res.message || res.error || 'Connection failed', 'error');
       }
     } catch (e) {
-      showToast('连接 WiFi 时发生错误', 'error');
+      showToast('WiFi connection error', 'error');
       console.error('Connect WiFi error:', e);
     }
   };
@@ -183,14 +183,12 @@ function ChatComponent() {
     try {
       const res = await disconnectWifi(deviceId);
       if (res.success) {
-        showToast('WiFi 已断开', 'success');
-        // 注意：不需要手动刷新，useEffect 会自动刷新并过滤
-        // 如果当前设备被断开，useEffect 会自动切换到其他设备
+        showToast('WiFi disconnected', 'success');
       } else {
-        showToast(res.message || res.error || '断开失败', 'error');
+        showToast(res.message || res.error || 'Disconnect failed', 'error');
       }
     } catch (e) {
-      showToast('断开 WiFi 时发生错误', 'error');
+      showToast('WiFi disconnect error', 'error');
       console.error('Disconnect WiFi error:', e);
     }
   };
@@ -201,144 +199,109 @@ function ChatComponent() {
         <Toast
           message={toast.message}
           type={toast.type}
-          onClose={() => setToast(prev => ({ ...prev, visible: false }))}
+          onClose={() => setToast((prev) => ({ ...prev, visible: false }))}
         />
       )}
-      {/* Config Modal */}
-      {showConfig && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl w-96 shadow-xl border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                全局配置
-              </h2>
-              {config && config.base_url && (
-                <span className="text-xs text-green-600 dark:text-green-400">
-                  ✓ 已配置
-                </span>
+
+      {/* Config Dialog */}
+      <Dialog open={showConfig} onOpenChange={setShowConfig}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-[#1d9bf0]" />
+              Configuration
+            </DialogTitle>
+            <DialogDescription>
+              Configure your API settings to get started
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="base_url">Base URL *</Label>
+              <Input
+                id="base_url"
+                value={tempConfig.base_url}
+                onChange={(e) =>
+                  setTempConfig({ ...tempConfig, base_url: e.target.value })
+                }
+                placeholder="http://localhost:8080/v1"
+              />
+              {!tempConfig.base_url && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Base URL is required
+                </p>
               )}
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                  Base URL *
-                </label>
-                <input
-                  type="text"
-                  value={tempConfig.base_url}
-                  onChange={e =>
-                    setTempConfig({ ...tempConfig, base_url: e.target.value })
+
+            <div className="space-y-2">
+              <Label htmlFor="api_key">API Key</Label>
+              <div className="relative">
+                <Input
+                  id="api_key"
+                  type={showApiKey ? 'text' : 'password'}
+                  value={tempConfig.api_key}
+                  onChange={(e) =>
+                    setTempConfig({ ...tempConfig, api_key: e.target.value })
                   }
-                  placeholder="http://localhost:8080/v1"
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Leave empty if not required"
+                  className="pr-10"
                 />
-                {!tempConfig.base_url && (
-                  <p className="text-xs text-red-500 mt-1">
-                    ⚠️ Base URL 是必需的
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                  API Key
-                </label>
-                <div className="relative">
-                  <input
-                    type={showApiKey ? 'text' : 'password'}
-                    value={tempConfig.api_key}
-                    onChange={e =>
-                      setTempConfig({ ...tempConfig, api_key: e.target.value })
-                    }
-                    placeholder="留空表示不设置"
-                    className="w-full px-3 py-2 pr-10 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  >
-                    {showApiKey ? (
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                  Model Name
-                </label>
-                <input
-                  type="text"
-                  value={tempConfig.model_name}
-                  onChange={e =>
-                    setTempConfig({ ...tempConfig, model_name: e.target.value })
-                  }
-                  placeholder="autoglm-phone-9b"
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <button
-                  onClick={() => {
-                    setShowConfig(false);
-                    // 恢复原始配置
-                    if (config) {
-                      setTempConfig({
-                        base_url: config.base_url,
-                        model_name: config.model_name,
-                        api_key: config.api_key || '',
-                      });
-                    }
-                  }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
                 >
-                  取消
-                </button>
-                <button
-                  onClick={handleSaveConfig}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  保存配置
-                </button>
+                  {showApiKey ? (
+                    <EyeOff className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-slate-400" />
+                  )}
+                </Button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* 左侧边栏 */}
+            <div className="space-y-2">
+              <Label htmlFor="model_name">Model Name</Label>
+              <Input
+                id="model_name"
+                value={tempConfig.model_name}
+                onChange={(e) =>
+                  setTempConfig({ ...tempConfig, model_name: e.target.value })
+                }
+                placeholder="autoglm-phone-9b"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-between gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowConfig(false);
+                if (config) {
+                  setTempConfig({
+                    base_url: config.base_url,
+                    model_name: config.model_name,
+                    api_key: config.api_key || '',
+                  });
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveConfig} variant="twitter">
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Save Configuration
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sidebar */}
       <DeviceSidebar
         devices={devices}
         currentDeviceId={currentDeviceId}
@@ -348,32 +311,36 @@ function ChatComponent() {
         onDisconnectWifi={handleDisconnectWifi}
       />
 
-      {/* 右侧主内容区 - 多实例架构 */}
+      {/* Main content */}
       <div className="flex-1 relative flex items-stretch justify-center min-h-0">
         {devices.length === 0 ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-            <div className="text-center text-gray-500 dark:text-gray-400">
-              <svg
-                className="w-16 h-16 mx-auto mb-4 opacity-50"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-              <h3 className="text-lg font-medium mb-2">
-                欢迎使用 AutoGLM Chat
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+            <div className="text-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mx-auto mb-4">
+                <svg
+                  className="w-10 h-10 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                Welcome to AutoGLM
               </h3>
-              <p className="text-sm">未检测到设备，请连接 ADB 设备</p>
+              <p className="text-slate-500 dark:text-slate-400">
+                Connect an ADB device to get started
+              </p>
             </div>
           </div>
         ) : (
-          devices.map(device => (
+          devices.map((device) => (
             <div
               key={device.id}
               className={`w-full h-full flex items-stretch justify-center min-h-0 ${

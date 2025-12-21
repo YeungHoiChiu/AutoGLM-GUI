@@ -1,8 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Smartphone,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Plug,
+} from 'lucide-react';
 import { DeviceCard } from './DeviceCard';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import type { Device } from '../api';
 
-// 初始状态从 localStorage 读取
 const getInitialCollapsedState = (): boolean => {
   try {
     const saved = localStorage.getItem('sidebar-collapsed');
@@ -36,7 +44,6 @@ export function DeviceSidebar({
     localStorage.setItem('sidebar-collapsed', JSON.stringify(isCollapsed));
   }, [isCollapsed]);
 
-  // 键盘快捷键支持
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
@@ -54,100 +61,77 @@ export function DeviceSidebar({
 
   return (
     <>
-      {/* 半圆形展开按钮（当侧边栏隐藏时显示） */}
+      {/* Collapsed toggle button */}
       {isCollapsed && (
-        <button
+        <Button
+          variant="outline"
+          size="icon"
           onClick={toggleCollapse}
-          className="fixed left-0 top-20 w-8 h-16 bg-blue-500 hover:bg-blue-600 text-white rounded-r-full shadow-lg transition-all duration-300 z-50 flex items-center justify-center"
-          title="展开侧边栏"
+          className="fixed left-0 top-20 z-50 h-16 w-8 rounded-r-lg rounded-l-none border-l-0 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
+          title="Expand sidebar"
+          style={{ left: 0 }}
         >
-          <svg
-            className="w-4 h-4 transition-transform duration-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </button>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       )}
 
-      {/* 侧边栏主体 */}
+      {/* Sidebar */}
       <div
-        className={`${isCollapsed ? 'w-0 -ml-8' : 'w-64'} transition-all duration-500 ease-[cubic-bezier(0.4,0.0,0.2,1)] h-full min-h-0 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden`}
+        className={`
+          ${isCollapsed ? 'w-0 -ml-4 opacity-0' : 'w-80 opacity-100'}
+          transition-all duration-300 ease-in-out
+          h-full min-h-0
+          bg-white dark:bg-slate-950
+          border-r border-slate-200 dark:border-slate-800
+          flex flex-col
+          overflow-hidden
+        `}
       >
-        {/* 头部 */}
-        <div className="border-b border-gray-200 dark:border-gray-700 flex items-center justify-between p-4 whitespace-nowrap">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-              设备列表
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              共 {devices.length} 个设备
-            </p>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1d9bf0]/10">
+              <Smartphone className="h-5 w-5 text-[#1d9bf0]" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                AutoGLM
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {devices.length} {devices.length === 1 ? 'device' : 'devices'}
+              </p>
+            </div>
           </div>
 
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={toggleCollapse}
-            className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-all duration-300 ease-[cubic-bezier(0.4,0.0,0.2,1)]"
-            title="收缩侧边栏"
+            className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+            title="Collapse sidebar"
           >
-            <svg
-              className="w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform duration-500 ease-[cubic-bezier(0.4,0.0,0.2,1)]"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
         </div>
 
-        {/* 设备列表 */}
+        <Separator className="mx-4" />
+
+        {/* Device list */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
           {devices.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              <svg
-                className="w-12 h-12 mx-auto mb-2 opacity-50"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-              <p className="text-sm">未检测到设备</p>
-              <p className="text-xs mt-1">请连接 ADB 设备</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                <Plug className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="mt-4 font-medium text-slate-900 dark:text-slate-100">
+                No devices connected
+              </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Connect an ADB device to get started
+              </p>
             </div>
           ) : (
-            devices.map(device => (
+            devices.map((device) => (
               <DeviceCard
                 key={device.id}
                 id={device.id}
@@ -168,33 +152,18 @@ export function DeviceSidebar({
           )}
         </div>
 
-        {/* 底部操作栏 */}
-        <div className="p-3 border-t border-gray-200 dark:border-gray-700 space-y-2 whitespace-nowrap">
-          <button
+        <Separator className="mx-4" />
+
+        {/* Bottom actions */}
+        <div className="p-3">
+          <Button
+            variant="outline"
             onClick={onOpenConfig}
-            className="w-full px-4 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg transition-all duration-500 ease-[cubic-bezier(0.4,0.0,0.2,1)] font-medium text-gray-700 dark:text-gray-300 flex items-center justify-center gap-2"
+            className="w-full justify-start gap-2 rounded-full border-slate-200 dark:border-slate-700"
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-            全局配置
-          </button>
+            <Settings className="h-4 w-4" />
+            Settings
+          </Button>
         </div>
       </div>
     </>

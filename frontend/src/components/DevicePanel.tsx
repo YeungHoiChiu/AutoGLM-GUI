@@ -1,4 +1,15 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import {
+  Send,
+  RotateCcw,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Sparkles,
+  Video,
+  Image as ImageIcon,
+  MonitorPlay,
+} from 'lucide-react';
 import { ScrcpyPlayer } from './ScrcpyPlayer';
 import type {
   ScreenshotResponse,
@@ -7,6 +18,10 @@ import type {
   ErrorEvent,
 } from '../api';
 import { getScreenshot, initAgent, resetChat, sendMessageStream } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 
 interface Message {
   id: string;
@@ -20,13 +35,12 @@ interface Message {
   isStreaming?: boolean;
 }
 
-// 全局配置接口
 interface GlobalConfig {
   base_url: string;
   model_name: string;
   api_key?: string;
 }
-// DevicePanel Props 接口
+
 interface DevicePanelProps {
   deviceId: string;
   deviceName: string;
@@ -41,7 +55,6 @@ export function DevicePanel({
   config,
   isConfigured,
 }: DevicePanelProps) {
-  // ========== 内部状态管理 ==========
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,48 +66,67 @@ export function DevicePanel({
   const [displayMode, setDisplayMode] = useState<
     'auto' | 'video' | 'screenshot'
   >('auto');
-  const [tapFeedback, setTapFeedback] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 选项卡显示状态管理
-  const [areTabsVisible, setAreTabsVisible] = useState(() => {
-    try {
-      const saved = localStorage.getItem('display-tabs-visible');
-      return saved !== null ? JSON.parse(saved) : true;
-    } catch (error) {
-      console.warn('Failed to load tabs visibility state:', error);
-      return true;
+  const showFeedback = (message: string, duration = 2000) => {
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
     }
-  });
+    setFeedbackMessage(message);
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setFeedbackMessage(null);
+    }, duration);
+  };
 
-  // 保存选项卡显示状态到 localStorage
   useEffect(() => {
-    localStorage.setItem(
-      'display-tabs-visible',
-      JSON.stringify(areTabsVisible)
-    );
-  }, [areTabsVisible]);
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
-  // Refs for resource cleanup
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    setShowControls(true);
+  };
+
+  const handleMouseLeave = () => {
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const [showControls, setShowControls] = useState(false);
+
   const chatStreamRef = useRef<{ close: () => void } | null>(null);
   const videoStreamRef = useRef<{ close: () => void } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const screenshotFetchingRef = useRef(false);
+  const hasAutoInited = useRef(false);
 
-  // ========== 内部业务逻辑 ==========
-
-  // 初始化 Agent
   const handleInit = useCallback(async () => {
-    if (!config) {
-      console.warn('[DevicePanel] config is required for handleInit');
-      return;
-    }
+    if (!config) return;
 
     try {
       await initAgent({
         model_config: {
-          base_url: config?.base_url || undefined,
-          api_key: config?.api_key || undefined,
-          model_name: config?.model_name || undefined,
+          base_url: config.base_url || undefined,
+          api_key: config.api_key || undefined,
+          model_name: config.model_name || undefined,
         },
         agent_config: {
           device_id: deviceId,
@@ -104,12 +136,19 @@ export function DevicePanel({
       setError(null);
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : '初始化失败，请检查配置';
+        err instanceof Error ? err.message : 'Initialization failed';
       setError(errorMessage);
     }
   }, [deviceId, config]);
 
-  // 发送消息（SSE 流处理）
+  // Auto-initialize on mount if configured
+  useEffect(() => {
+    if (isConfigured && config && !initialized && !hasAutoInited.current) {
+      hasAutoInited.current = true;
+      handleInit();
+    }
+  }, [isConfigured, config, initialized, handleInit]);
+
   const handleSend = useCallback(async () => {
     const inputValue = input.trim();
     if (!inputValue || loading) return;
@@ -125,12 +164,11 @@ export function DevicePanel({
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
     setError(null);
 
-    // 为每个请求创建独立的数组，避免多设备并发时的数据混乱
     const thinkingList: string[] = [];
     const actionsList: Record<string, unknown>[] = [];
 
@@ -145,19 +183,17 @@ export function DevicePanel({
       isStreaming: true,
     };
 
-    setMessages(prev => [...prev, agentMessage]);
+    setMessages((prev) => [...prev, agentMessage]);
 
-    // 启动流式接收（deviceId 自动正确，无闭包陷阱）
     const stream = sendMessageStream(
       userMessage.content,
       deviceId,
-      // onStep
       (event: StepEvent) => {
         thinkingList.push(event.thinking);
         actionsList.push(event.action);
 
-        setMessages(prev =>
-          prev.map(msg =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === agentMessageId
               ? {
                   ...msg,
@@ -169,10 +205,9 @@ export function DevicePanel({
           )
         );
       },
-      // onDone
       (event: DoneEvent) => {
-        setMessages(prev =>
-          prev.map(msg =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === agentMessageId
               ? {
                   ...msg,
@@ -186,14 +221,13 @@ export function DevicePanel({
         setLoading(false);
         chatStreamRef.current = null;
       },
-      // onError
       (event: ErrorEvent) => {
-        setMessages(prev =>
-          prev.map(msg =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === agentMessageId
               ? {
                   ...msg,
-                  content: `错误: ${event.message}`,
+                  content: `Error: ${event.message}`,
                   success: false,
                   isStreaming: false,
                 }
@@ -209,7 +243,6 @@ export function DevicePanel({
     chatStreamRef.current = stream;
   }, [input, loading, initialized, deviceId, handleInit]);
 
-  // 重置对话
   const handleReset = useCallback(async () => {
     if (chatStreamRef.current) {
       chatStreamRef.current.close();
@@ -223,7 +256,6 @@ export function DevicePanel({
     await resetChat(deviceId);
   }, [deviceId]);
 
-  // 滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -232,26 +264,17 @@ export function DevicePanel({
     scrollToBottom();
   }, [messages]);
 
-  // ========== 资源清理（组件卸载时） ==========
   useEffect(() => {
     return () => {
-      console.log(`[DevicePanel] 设备 ${deviceId} 卸载，清理资源`);
-
-      // 关闭聊天流
       if (chatStreamRef.current) {
         chatStreamRef.current.close();
-        chatStreamRef.current = null;
       }
-
-      // 关闭视频流
       if (videoStreamRef.current) {
         videoStreamRef.current.close();
-        videoStreamRef.current = null;
       }
     };
   }, [deviceId]);
 
-  // 截图轮询
   useEffect(() => {
     if (!deviceId) return;
 
@@ -286,13 +309,12 @@ export function DevicePanel({
   }, [deviceId, videoStreamFailed, displayMode]);
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSend();
     }
   };
 
-  // 处理视频流就绪事件
   const handleVideoStreamReady = useCallback(
     (stream: { close: () => void } | null) => {
       videoStreamRef.current = stream;
@@ -300,103 +322,128 @@ export function DevicePanel({
     []
   );
 
-  // 处理视频流降级到截图模式
   const handleFallback = useCallback(() => {
     setVideoStreamFailed(true);
     setUseVideoStream(false);
   }, []);
 
-  // 切换选项卡显示状态
-  const toggleTabsVisibility = () => {
-    setAreTabsVisible(!areTabsVisible);
+  const toggleDisplayMode = (mode: 'auto' | 'video' | 'screenshot') => {
+    setDisplayMode(mode);
   };
 
   return (
     <div className="flex-1 flex gap-4 p-4 items-stretch justify-center min-h-0">
-      {/* Chatbox */}
-      <div className="flex flex-col w-full max-w-2xl min-h-0 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-white dark:bg-gray-800">
-        {/* 头部 */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 rounded-t-2xl">
-          <div>
-            <h2 className="text-lg font-semibold">{deviceName}</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {deviceId}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            {!initialized && !isConfigured && (
-              <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs text-yellow-800 dark:text-yellow-200">
-                ⚠️ 请先配置 Base URL（点击左下角&quot;全局配置&quot;按钮）
-              </div>
-            )}
-            <div className="flex gap-2">
-              {!initialized ? (
-                <button
-                  onClick={handleInit}
-                  disabled={!isConfigured || !config}
-                  className={`px-4 py-2 rounded-lg transition-colors text-sm ${
-                    !isConfigured || !config
-                      ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed text-gray-500 dark:text-gray-400'
-                      : 'bg-blue-500 text-white hover:bg-blue-600'
-                  }`}
-                >
-                  初始化设备
-                </button>
-              ) : (
-                <span className="px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full text-sm">
-                  已初始化
-                </span>
-              )}
-              <button
-                onClick={handleReset}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
-              >
-                重置
-              </button>
+      {/* Chat area - takes remaining space */}
+      <Card className="flex-1 flex flex-col min-h-0">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1d9bf0]/10">
+              <Sparkles className="h-5 w-5 text-[#1d9bf0]" />
             </div>
+            <div>
+              <h2 className="font-bold text-slate-900 dark:text-slate-100">
+                {deviceName}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                {deviceId}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isConfigured && (
+              <Badge variant="warning">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                Configure first
+              </Badge>
+            )}
+
+            {!initialized ? (
+              <Button
+                onClick={handleInit}
+                disabled={!isConfigured || !config}
+                size="sm"
+                variant="twitter"
+              >
+                Initialize
+              </Button>
+            ) : (
+              <Badge variant="success">
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                Ready
+              </Badge>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleReset}
+              className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+              title="Reset chat"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
-        {/* 错误提示 */}
+        {/* Error message */}
         {error && (
-          <div className="mx-4 mt-4 p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg text-sm">
+          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
             {error}
           </div>
         )}
 
-        {/* 消息列表 */}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
           {messages.length === 0 ? (
-            <div className="text-center text-gray-500 dark:text-gray-400 mt-8">
-              <p className="text-lg">设备已选择</p>
-              <p className="text-sm mt-2">输入任务描述，让 AI 帮你操作手机</p>
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
+                <Sparkles className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="font-medium text-slate-900 dark:text-slate-100">
+                Ready to help
+              </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Describe what you want to do on your phone
+              </p>
             </div>
           ) : null}
 
-          {messages.map(message => (
+          {messages.map((message) => (
             <div
               key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${
+                message.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
             >
               {message.role === 'agent' ? (
-                <div className="max-w-[80%] space-y-2">
-                  {/* 显示每步思考过程 */}
+                <div className="max-w-[85%] space-y-3">
+                  {/* Thinking process */}
                   {message.thinking?.map((think, idx) => (
                     <div
                       key={idx}
-                      className="bg-gray-100 dark:bg-gray-700 rounded-2xl px-4 py-3 border-l-4 border-blue-500"
+                      className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3"
                     >
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                        💭 步骤 {idx + 1} - 思考过程
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1d9bf0]/10">
+                          <Sparkles className="h-3 w-3 text-[#1d9bf0]" />
+                        </div>
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                          Step {idx + 1}
+                        </span>
                       </div>
-                      <p className="text-sm whitespace-pre-wrap">{think}</p>
+                      <p className="text-sm whitespace-pre-wrap">
+                        {think}
+                      </p>
 
                       {message.actions?.[idx] && (
                         <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer text-blue-500 hover:text-blue-600">
-                            查看动作
+                          <summary className="cursor-pointer text-[#1d9bf0] hover:text-[#1a8cd8]">
+                            View action
                           </summary>
-                          <pre className="mt-1 p-2 bg-gray-800 text-gray-200 rounded overflow-x-auto text-xs">
+                          <pre className="mt-2 p-2 bg-slate-900 text-slate-200 rounded-lg overflow-x-auto text-xs">
                             {JSON.stringify(message.actions[idx], null, 2)}
                           </pre>
                         </details>
@@ -404,34 +451,52 @@ export function DevicePanel({
                     </div>
                   ))}
 
-                  {/* 最终结果 */}
+                  {/* Final result */}
                   {message.content && (
                     <div
-                      className={`rounded-2xl px-4 py-3 ${
-                        message.success === false
-                          ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-                          : 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                      }`}
+                      className={`
+                        rounded-2xl px-4 py-3 flex items-start gap-2
+                        ${
+                          message.success === false
+                            ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }
+                      `}
                     >
-                      <p className="whitespace-pre-wrap">{message.content}</p>
-                      {message.steps !== undefined && (
-                        <p className="text-xs mt-2 opacity-70">
-                          总步数: {message.steps}
-                        </p>
-                      )}
+                      <CheckCircle2
+                        className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                          message.success === false
+                            ? 'text-red-500'
+                            : 'text-green-500'
+                        }`}
+                      />
+                      <div>
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        {message.steps !== undefined && (
+                          <p className="text-xs mt-2 opacity-60">
+                            {message.steps} steps completed
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {/* 流式加载提示 */}
+                  {/* Streaming indicator */}
                   {message.isStreaming && (
-                    <div className="text-sm text-gray-500 dark:text-gray-400 animate-pulse">
-                      正在执行...
+                    <div className="flex items-center gap-2 text-sm text-slate-400">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Processing...
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-blue-500 text-white">
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                <div className="max-w-[75%]">
+                  <div className="chat-bubble-user px-4 py-3">
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 text-right">
+                    {message.timestamp.toLocaleTimeString()}
+                  </p>
                 </div>
               )}
             </div>
@@ -440,153 +505,142 @@ export function DevicePanel({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 输入区域 */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 rounded-b-2xl">
+        {/* Input area */}
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleInputKeyDown}
               placeholder={
                 !isConfigured
-                  ? '请先配置 Base URL'
+                  ? 'Please configure first'
                   : !initialized
-                    ? '请先初始化设备'
-                    : '输入任务描述...'
+                    ? 'Initialize device first'
+                    : 'What would you like to do?'
               }
               disabled={loading}
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1"
             />
-            <button
+            <Button
               onClick={handleSend}
               disabled={loading || !input.trim()}
-              className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              size="icon"
+              variant="twitter"
+              className="h-10 w-10 rounded-full"
             >
-              发送
-            </button>
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* Screen Monitor */}
-      <div className="w-full max-w-xs min-h-0 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-gray-900 overflow-hidden relative">
-        {/* 附着的选项卡开关按钮（选项卡隐藏时显示） */}
-        {!areTabsVisible && (
-          <button
-            onClick={toggleTabsVisibility}
-            className="absolute top-2 right-2 z-10 w-8 h-8 bg-gray-500 hover:bg-blue-600 text-white rounded-full shadow-lg transition-all duration-300 flex items-center justify-center opacity-20 hover:opacity-100 cursor-pointer"
-            title="显示选项卡"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-              />
-            </svg>
-          </button>
-        )}
-
-        {/* Mode Switch Button */}
+      {/* Screen preview - phone aspect ratio */}
+      <Card
+        className="w-[320px] flex-shrink-0 relative min-h-0 overflow-hidden bg-slate-950"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        {/* Delayed controls - appears on hover */}
         <div
-          className={`${areTabsVisible ? 'absolute top-2 right-2' : 'hidden'} z-10 flex gap-1 bg-black/70 rounded-lg p-1`}
+          className={`absolute top-4 right-4 z-10 transition-opacity duration-200 ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
         >
-          <button
-            onClick={() => setDisplayMode('auto')}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              displayMode === 'auto'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            自动
-          </button>
-          <button
-            onClick={() => setDisplayMode('video')}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              displayMode === 'video'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            视频流
-          </button>
-          <button
-            onClick={() => setDisplayMode('screenshot')}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              displayMode === 'screenshot'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            截图
-          </button>
-
-          {/* 隐藏选项卡按钮 */}
-          <button
-            onClick={toggleTabsVisibility}
-            className="ml-1 px-2 py-1 text-xs rounded transition-colors bg-gray-600 text-gray-300 hover:bg-gray-500"
-            title="隐藏选项卡"
-          >
-            <svg
-              className="w-3 h-3"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <div className="flex items-center gap-1 bg-slate-900/90 backdrop-blur rounded-xl p-1 shadow-lg">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleDisplayMode('auto')}
+              className={`h-7 px-3 text-xs rounded-lg transition-colors ${
+                displayMode === 'auto'
+                  ? 'bg-[#1d9bf0] text-white'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              Auto
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleDisplayMode('video')}
+              className={`h-7 px-3 text-xs rounded-lg transition-colors ${
+                displayMode === 'video'
+                  ? 'bg-[#1d9bf0] text-white'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Video className="w-3 h-3 mr-1" />
+              Video
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleDisplayMode('screenshot')}
+              className={`h-7 px-3 text-xs rounded-lg transition-colors ${
+                displayMode === 'screenshot'
+                  ? 'bg-[#1d9bf0] text-white'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <ImageIcon className="w-3 h-3 mr-1" />
+              Image
+            </Button>
+          </div>
         </div>
 
+        {/* Current mode indicator - bottom left */}
+        <div className="absolute bottom-4 left-4 z-10">
+          <Badge
+            variant="secondary"
+            className="bg-slate-900/90 text-slate-300 border border-slate-700"
+          >
+            {displayMode === 'auto' && 'Auto'}
+            {displayMode === 'video' && (
+              <>
+                <MonitorPlay className="w-3 h-3 mr-1" />
+                Video
+              </>
+            )}
+            {displayMode === 'screenshot' && (
+              <>
+                <ImageIcon className="w-3 h-3 mr-1" />
+                Image (0.5s 刷新)
+              </>
+            )}
+          </Badge>
+        </div>
+
+        {/* Feedback message */}
+        {feedbackMessage && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-3 py-2 bg-[#1d9bf0] text-white text-sm rounded-xl shadow-lg">
+            {feedbackMessage}
+          </div>
+        )}
+
+        {/* Video stream */}
         {displayMode === 'video' ||
         (displayMode === 'auto' && useVideoStream && !videoStreamFailed) ? (
-          <>
-            {tapFeedback && (
-              <div className="absolute top-14 right-2 z-20 px-3 py-2 bg-blue-500 text-white text-sm rounded-lg shadow-lg">
-                {tapFeedback}
-              </div>
-            )}
-
-            <ScrcpyPlayer
-              deviceId={deviceId}
-              className="w-full h-full"
-              enableControl={true}
-              onFallback={handleFallback}
-              onTapSuccess={() => {
-                setTapFeedback('Tap executed');
-                setTimeout(() => setTapFeedback(null), 2000);
-              }}
-              onTapError={error => {
-                setTapFeedback(`Tap failed: ${error}`);
-                setTimeout(() => setTapFeedback(null), 3000);
-              }}
-              onSwipeSuccess={() => {
-                setTapFeedback('Swipe executed');
-                setTimeout(() => setTapFeedback(null), 2000);
-              }}
-              onSwipeError={error => {
-                setTapFeedback(`Swipe failed: ${error}`);
-                setTimeout(() => setTapFeedback(null), 3000);
-              }}
-              onStreamReady={handleVideoStreamReady}
-              fallbackTimeout={100000}
-            />
-          </>
+          <ScrcpyPlayer
+            deviceId={deviceId}
+            className="w-full h-full"
+            enableControl={true}
+            onFallback={handleFallback}
+            onTapSuccess={() => showFeedback('Tapped', 2000)}
+            onTapError={(error) => showFeedback(`Error: ${error}`, 3000)}
+            onSwipeSuccess={() => showFeedback('Swiped', 2000)}
+            onSwipeError={(error) => showFeedback(`Swipe error: ${error}`, 3000)}
+            onStreamReady={handleVideoStreamReady}
+            fallbackTimeout={100000}
+          />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-900 min-h-0">
+          /* Screenshot mode */
+          <div className="w-full h-full flex items-center justify-center bg-slate-900 min-h-0">
             {screenshot && screenshot.success ? (
               <div className="relative w-full h-full flex items-center justify-center min-h-0">
                 <img
@@ -601,31 +655,26 @@ export function DevicePanel({
                   }}
                 />
                 {screenshot.is_sensitive && (
-                  <div className="absolute top-12 right-2 px-2 py-1 bg-yellow-500 text-white text-xs rounded">
-                    敏感内容
+                  <div className="absolute top-12 right-2 px-2 py-1 bg-yellow-500 text-white text-xs rounded-lg">
+                    Sensitive content
                   </div>
                 )}
-                <div className="absolute bottom-2 left-2 px-2 py-1 bg-blue-500 text-white text-xs rounded">
-                  截图模式 (0.5s 刷新)
-                  {displayMode === 'auto' &&
-                    videoStreamFailed &&
-                    ' - 视频流不可用'}
-                </div>
               </div>
             ) : screenshot?.error ? (
-              <div className="text-center text-red-500 dark:text-red-400">
-                <p className="mb-2">截图失败</p>
-                <p className="text-xs">{screenshot.error}</p>
+              <div className="text-center text-red-400">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                <p className="font-medium">Screenshot failed</p>
+                <p className="text-xs mt-1 opacity-60">{screenshot.error}</p>
               </div>
             ) : (
-              <div className="text-center text-gray-500 dark:text-gray-400">
-                <div className="w-8 h-8 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />
-                <p>加载中...</p>
+              <div className="text-center text-slate-400">
+                <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin" />
+                <p className="text-sm">Loading...</p>
               </div>
             )}
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
